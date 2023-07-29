@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Registration</title>
+</head>
+<body>
+  <h1>User Registration</h1>
+  <% if (messages && messages.error && messages.error.length > 0) { %>
+    <div class="error">
+      <% messages.error.forEach(msg => { %>
+        <p><%= msg %></p>
+      <% }); %>
+    </div>
+  <% } %>
+  <form action="/register" method="post">
+    <div>
+      <label for="username">Username:</label>
+      <input type="text" name="username" id="username" required>
+    </div>
+    <div>
+      <label for="email">Email:</label>
+      <input type="email" name="email" id="email" required>
+    </div>
+    <div>
+      <label for="password">Password:</label>
+      <input type="password" name="password" id="password" required>
+    </div>
+    <div>
+      <button type="submit">Register</button>
+    </div>
+  </form>
+</body>
+</html>
