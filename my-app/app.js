@@ -6,6 +6,7 @@ const { check, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
 const mysql = require('mysql');
 const path = require('path');
+const MySQLStore = require('express-mysql-session')(session);
 require('dotenv').config();
 
 const dbHost = process.env.DB_HOST;
@@ -20,6 +21,23 @@ const connection = mysql.createConnection({
 	database : dbUser,
 });
 
+const sessionStore = new MySQLStore({
+    host: dbHost,
+    user: dbUser,
+    password: dbPassword,
+    database: dbUser,
+    // Other session store options
+  });
+
+const isAuthenticated = (req, res, next) => {
+  if (req.session.userId) {
+    // User is authenticated, proceed to the next middleware or route handler
+    return next();
+  }
+  // User is not authenticated, redirect to the login page
+  res.redirect('/');
+};
+
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 
@@ -27,7 +45,8 @@ app.use(bodyParser.json());
 app.use(session({
   secret: dbSecret,
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  store: sessionStore,
 }));
 app.use(flash());
 app.use((req, res, next) => {
@@ -99,3 +118,73 @@ app.post(
     }
   );
 
+app.post(
+  '/login',
+  [
+    check('email').isEmail().withMessage('Invalid email address'),
+    check('password').notEmpty().withMessage('Password is required')
+  ],
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      // If validation fails, store the error messages in flash and redirect back to the login page
+      req.flash('error', errors.array().map(err => err.msg));
+      return res.redirect('/');
+    }
+
+    const { email, password } = req.body;
+
+    // Fetch user data from the database based on the provided email
+    const query = 'SELECT * FROM credentials WHERE email = ?';
+    connection.query(query, [email], (err, results) => {
+      if (err) {
+        console.error('Error querying the database:', err);
+        req.flash('error', 'An error occurred while logging in. Please try again.');
+        return res.redirect('/');
+      }
+
+      // Check if the user with the provided email exists in the database
+      if (results.length === 0) {
+        req.flash('error', 'User not found. Please check your email or register.');
+        return res.redirect('/');
+      }
+
+      // User found, compare the provided password with the hashed password from the database
+      const user = results[0];
+      const isPasswordValid = bcrypt.compareSync(password, user.password);
+      if (!isPasswordValid) {
+        req.flash('error', 'Invalid password. Please try again.');
+        return res.redirect('/');
+      }
+
+      // Successful login, redirect to dashboard or other authenticated page
+      req.session.userId = user.id; // Assuming you have a user object with an 'id' property
+     
+      res.redirect('/dashboard');
+      
+    });
+  }
+);
+
+
+app.get('/dashboard', isAuthenticated, (req, res) => {
+  // Retrieve user ID from the session
+  const userId = req.session.userId;
+
+  // Fetch user data from the database based on the user ID
+  // You'll need to implement this database query based on your SQL database structure
+  // For example: SELECT * FROM users WHERE id = ?
+  connection.query('SELECT * FROM credentials WHERE id = ?', [userId], (err, results) => {
+    if (err) {
+      console.error('Error fetching user data:', err);
+      // Handle the error, maybe redirect to an error page
+      return res.status(500).send('Internal Server Error');
+    }
+
+    // Assuming 'results' contains the user data
+    const user = results[0];
+
+    // Render the 'dashboard' view with user data
+    res.render('dashboard', { user: user });
+  });
+});
